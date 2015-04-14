@@ -763,7 +763,6 @@ mainLoop:
 					line = []rune(prefixHistory[historyPos])
 					pos = len(line)
 				} else {
-					fmt.Printf("HERE\n")
 					fmt.Print(beep)
 				}
 			case down:
@@ -859,7 +858,7 @@ mainLoop:
 				}
 				line = line[:0]
 				pos = 0
-				fmt.Print(prompt)
+				fmt.Print(string(s.prompt))
 				s.restartPrompt()
 			// Unused keys
 			case esc, tab, ctrlA, ctrlB, ctrlE, ctrlF, ctrlG, ctrlK, ctrlN, ctrlO, ctrlP, ctrlQ, ctrlR, ctrlS,
