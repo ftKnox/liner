@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"fmt"
 )
 
 type nexter struct {
@@ -27,6 +28,7 @@ type State struct {
 	winch       chan os.Signal
 	pending     []rune
 	useCHA      bool
+	prompt			[]rune
 }
 
 // NewLiner initializes a new *State, and sets the terminal into raw mode. To
@@ -348,6 +350,10 @@ func (s *State) Close() error {
 	if !s.inputRedirected {
 		s.origMode.ApplyMode()
 	}
+
+	//print empty line so shell prompt doesn't get printed after our prompt
+	fmt.Print("\n")
+
 	return nil
 }
 

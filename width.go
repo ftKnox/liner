@@ -20,6 +20,28 @@ var doubleWidth = []*unicode.RangeTable{
 	unicode.Katakana,
 }
 
+//countEscapes counts the number of escape characters in promptstring
+func countEscapes(prompt []rune) (count int) {
+	var (
+		in_escape bool
+		e rune
+	)
+
+	for _,e = range prompt {
+		if e == '\033' {
+			in_escape = true
+		} else if e == 'm' {
+			in_escape = false
+		}
+
+		if in_escape {
+			count++
+		}
+	}
+
+	return
+}
+
 // countGlyphs considers zero-width characters to be zero glyphs wide,
 // and members of Chinese, Japanese, and Korean scripts to be 2 glyphs wide.
 func countGlyphs(s []rune) int {

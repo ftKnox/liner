@@ -87,6 +87,13 @@ const (
 	tabReverse
 )
 
+//Refresh exported so we can dynamically change the prompt
+func (s *State) Refresh(prompt string) error {
+	s.prompt = []rune(prompt)
+	//need to get current line
+	return s.refresh(s.prompt,[]rune{},0)
+}
+
 func (s *State) refresh(prompt []rune, buf []rune, pos int) error {
 	s.cursorPos(0)
 	_, err := fmt.Print(string(prompt))
@@ -95,12 +102,14 @@ func (s *State) refresh(prompt []rune, buf []rune, pos int) error {
 	}
 
 	pLen := countGlyphs(prompt)
+	eLen := countEscapes(prompt)
 	bLen := countGlyphs(buf)
 	pos = countGlyphs(buf[:pos])
+
 	if pLen+bLen < s.columns {
 		_, err = fmt.Print(string(buf))
 		s.eraseLine()
-		s.cursorPos(pLen + pos)
+		s.cursorPos((pLen + pos)-eLen)
 	} else {
 		// Find space available
 		space := s.columns - pLen
@@ -479,11 +488,12 @@ func (s *State) Prompt(prompt string) (string, error) {
 	s.getColumns()
 
 	fmt.Print(prompt)
-	p := []rune(prompt)
+
+	s.prompt = []rune(prompt)
 	var line []rune
 	pos := 0
 	historyEnd := ""
-	prefixHistory := s.getHistoryByPrefix(string(line))
+	prefixHistory := s.getHistoryByPrefix("")
 	historyPos := len(prefixHistory)
 	historyAction := false // used to mark history related actions
 	killAction := 0        // used to mark kill related actions
@@ -504,25 +514,29 @@ mainLoop:
 				break mainLoop
 			case ctrlA: // Start of line
 				pos = 0
-				s.refresh(p, line, pos)
+				s.refresh(s.prompt, line, pos)
 			case ctrlE: // End of line
 				pos = len(line)
-				s.refresh(p, line, pos)
+				s.refresh(s.prompt, line, pos)
 			case ctrlB: // left
 				if pos > 0 {
 					pos -= len(getSuffixGlyphs(line[:pos], 1))
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				} else {
 					fmt.Print(beep)
 				}
 			case ctrlF: // right
 				if pos < len(line) {
 					pos += len(getPrefixGlyphs(line[pos:], 1))
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				} else {
 					fmt.Print(beep)
 				}
 			case ctrlD: // del
+				//always return io.EOF
+				return "", io.EOF
+
+				/*
 				if pos == 0 && len(line) == 0 {
 					// exit
 					return "", io.EOF
@@ -537,8 +551,9 @@ mainLoop:
 				} else {
 					n := len(getPrefixGlyphs(line[pos:], 1))
 					line = append(line[:pos], line[pos+n:]...)
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				}
+				*/
 			case ctrlK: // delete remainder of line
 				if pos >= len(line) {
 					fmt.Print(beep)
@@ -551,7 +566,7 @@ mainLoop:
 
 					killAction = 2 // Mark that there was a kill action
 					line = line[:pos]
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				}
 			case ctrlP: // up
 				historyAction = true
@@ -562,7 +577,7 @@ mainLoop:
 					historyPos--
 					line = []rune(prefixHistory[historyPos])
 					pos = len(line)
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				} else {
 					fmt.Print(beep)
 				}
@@ -576,7 +591,7 @@ mainLoop:
 						line = []rune(prefixHistory[historyPos])
 					}
 					pos = len(line)
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				} else {
 					fmt.Print(beep)
 				}
@@ -594,11 +609,11 @@ mainLoop:
 					copy(line[pos-len(prev):], next)
 					copy(line[pos-len(prev)+len(next):], scratch)
 					pos += len(next)
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				}
 			case ctrlL: // clear screen
 				s.eraseScreen()
-				s.refresh(p, line, pos)
+				s.refresh(s.prompt, line, pos)
 			case ctrlC: // reset
 				fmt.Println("^C")
 				if s.ctrlCAborts {
@@ -606,7 +621,7 @@ mainLoop:
 				}
 				line = line[:0]
 				pos = 0
-				fmt.Print(prompt)
+				fmt.Print(s.prompt)
 				s.restartPrompt()
 			case ctrlH, bs: // Backspace
 				if pos <= 0 {
@@ -615,7 +630,7 @@ mainLoop:
 					n := len(getSuffixGlyphs(line[:pos], 1))
 					line = append(line[:pos-n], line[pos:]...)
 					pos -= n
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				}
 			case ctrlU: // Erase line before cursor
 				if killAction > 0 {
@@ -627,7 +642,7 @@ mainLoop:
 				killAction = 2 // Mark that there was some killing
 				line = line[pos:]
 				pos = 0
-				s.refresh(p, line, pos)
+				s.refresh(s.prompt, line, pos)
 			case ctrlW: // Erase word
 				if pos == 0 {
 					fmt.Print(beep)
@@ -664,16 +679,16 @@ mainLoop:
 				}
 				killAction = 2 // Mark that there was some killing
 
-				s.refresh(p, line, pos)
+				s.refresh(s.prompt, line, pos)
 			case ctrlY: // Paste from Yank buffer
-				line, pos, next, err = s.yank(p, line, pos)
+				line, pos, next, err = s.yank(s.prompt, line, pos)
 				goto haveNext
 			case ctrlR: // Reverse Search
 				line, pos, next, err = s.reverseISearch(line, pos)
-				s.refresh(p, line, pos)
+				s.refresh(s.prompt, line, pos)
 				goto haveNext
 			case tab: // Tab completion
-				line, pos, next, err = s.tabComplete(p, line, pos)
+				line, pos, next, err = s.tabComplete(s.prompt, line, pos)
 				goto haveNext
 			// Catch keys that do nothing, but you don't want them to beep
 			case esc:
@@ -685,14 +700,14 @@ mainLoop:
 			case 0, 28, 29, 30, 31:
 				fmt.Print(beep)
 			default:
-				if pos == len(line) && len(p)+len(line) < s.columns-1 {
+				if pos == len(line) && (len(s.prompt)-countEscapes(s.prompt))+len(line) < s.columns-1 {
 					line = append(line, v)
 					fmt.Printf("%c", v)
 					pos++
 				} else {
 					line = append(line[:pos], append([]rune{v}, line[pos:]...)...)
 					pos++
-					s.refresh(p, line, pos)
+					s.refresh(s.prompt, line, pos)
 				}
 			}
 		case action:
@@ -748,6 +763,7 @@ mainLoop:
 					line = []rune(prefixHistory[historyPos])
 					pos = len(line)
 				} else {
+					fmt.Printf("HERE\n")
 					fmt.Print(beep)
 				}
 			case down:
@@ -768,7 +784,7 @@ mainLoop:
 			case end: // End of line
 				pos = len(line)
 			}
-			s.refresh(p, line, pos)
+			s.refresh(s.prompt, line, pos)
 		}
 		if !historyAction {
 			prefixHistory = s.getHistoryByPrefix(string(line))

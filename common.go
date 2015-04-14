@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -61,9 +62,37 @@ const KillRingMax = 60
 // HistoryLimit is the maximum number of entries saved in the scrollback history.
 const HistoryLimit = 1000
 
+//LoadHistory wraps ReadHistory to not have to deal with file handles
+func (s *State) LoadHistory(fname string) (err error) {
+	fh, err := os.Open(fname)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	//only load the last 100 items in history
+	_, err = s.ReadHistory(fh,100)
+
+	return
+}
+
+//SaveHistory wraps WriteHistory to not have to deal with file handles AND allow for
+//appending to history log file easily
+func (s *State) SaveHistory(fname string) (err error) {
+	fh, err := os.OpenFile(fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	_, err = s.WriteHistory(fh)
+
+	return
+}
+
 // ReadHistory reads scrollback history from r. Returns the number of lines
 // read, and any read error (except io.EOF).
-func (s *State) ReadHistory(r io.Reader) (num int, err error) {
+func (s *State) ReadHistory(r io.Reader,maxlines int) (num int, err error) {
 	s.historyMutex.Lock()
 	defer s.historyMutex.Unlock()
 
@@ -87,6 +116,10 @@ func (s *State) ReadHistory(r io.Reader) (num int, err error) {
 		s.history = append(s.history, string(line))
 		if len(s.history) > HistoryLimit {
 			s.history = s.history[1:]
+		}
+
+		if num == maxlines {
+			break
 		}
 	}
 	return num, nil
