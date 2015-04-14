@@ -59,9 +59,6 @@ var ErrNotTerminalOutput = errors.New("standard output is not a terminal")
 // Max elements to save on the killring
 const KillRingMax = 60
 
-// HistoryLimit is the maximum number of entries saved in the scrollback history.
-const HistoryLimit = 1000
-
 //LoadHistory wraps ReadHistory to not have to deal with file handles
 func (s *State) LoadHistory(fname string) (err error) {
 	fh, err := os.Open(fname)
@@ -71,7 +68,7 @@ func (s *State) LoadHistory(fname string) (err error) {
 	defer fh.Close()
 
 	//only load the last 100 items in history
-	_, err = s.ReadHistory(fh,100)
+	_, err = s.ReadHistory(fh)
 
 	return
 }
@@ -92,20 +89,23 @@ func (s *State) SaveHistory(fname string) (err error) {
 
 // ReadHistory reads scrollback history from r. Returns the number of lines
 // read, and any read error (except io.EOF).
-func (s *State) ReadHistory(r io.Reader,maxlines int) (num int, err error) {
+func (s *State) ReadHistory(r io.Reader) (num int, err error) {
 	s.historyMutex.Lock()
 	defer s.historyMutex.Unlock()
 
 	in := bufio.NewReader(r)
 	num = 0
+
 	for {
 		line, part, err := in.ReadLine()
-		if err == io.EOF {
+		if err == io.EOF && len(line) == 0 {
 			break
+		} else {
+			if err != nil {
+				return num, err
+			}
 		}
-		if err != nil {
-			return num, err
-		}
+
 		if part {
 			return num, fmt.Errorf("line %d is too long", num+1)
 		}
@@ -113,15 +113,13 @@ func (s *State) ReadHistory(r io.Reader,maxlines int) (num int, err error) {
 			return num, fmt.Errorf("invalid string at line %d", num+1)
 		}
 		num++
+
 		s.history = append(s.history, string(line))
-		if len(s.history) > HistoryLimit {
+		if len(s.history) > s.HistoryLimit {
 			s.history = s.history[1:]
 		}
-
-		if num == maxlines {
-			break
-		}
 	}
+
 	return num, nil
 }
 
@@ -146,6 +144,11 @@ func (s *State) WriteHistory(w io.Writer) (num int, err error) {
 	return num, nil
 }
 
+//SetHistoryLimit allows dynamically changing command history limit
+func (s *State) SetHistoryLimit(limit int) {
+	s.HistoryLimit = limit
+}
+
 // AppendHistory appends an entry to the scrollback history. AppendHistory
 // should be called iff Prompt returns a valid command.
 func (s *State) AppendHistory(item string) {
@@ -158,7 +161,7 @@ func (s *State) AppendHistory(item string) {
 		}
 	}
 	s.history = append(s.history, item)
-	if len(s.history) > HistoryLimit {
+	if len(s.history) > s.HistoryLimit {
 		s.history = s.history[1:]
 	}
 }

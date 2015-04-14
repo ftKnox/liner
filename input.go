@@ -29,6 +29,7 @@ type State struct {
 	pending     []rune
 	useCHA      bool
 	prompt			[]rune
+	HistoryLimit	int
 }
 
 // NewLiner initializes a new *State, and sets the terminal into raw mode. To
@@ -40,6 +41,7 @@ type State struct {
 // once.
 func NewLiner() *State {
 	var s State
+	s.HistoryLimit = 1000
 	s.r = bufio.NewReader(os.Stdin)
 
 	s.terminalSupported = TerminalSupported()
